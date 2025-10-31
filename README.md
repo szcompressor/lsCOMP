@@ -28,4 +28,4 @@ After compilation, you will see 2 executable binaries, ```lsCOMP_uint32``` and `
 They are used for performing either configurable lossy or lossless compression for ```uint32``` and ```uint16``` data.
 
 ## Execute lsCOMP
-We use ```uint32``` compression with ```lsCOMP_uint32``` as an example; the usage of ```lsCOMP_uint16``` is similar.
+We use ```lsCOMP_uint32``` here to explain; the usage of ```lsCOMP_uint16``` is similar.
