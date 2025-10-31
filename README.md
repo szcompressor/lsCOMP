@@ -56,7 +56,7 @@ More details about these algorithms can be found in the paper.
 
 A sample output (lossless mode) can be found in the below:
 ```shell
-./lsCOMP_uint32 -i xpcs_500_2162_2068.uint32 -d 500 2162 2068 -b 1 1 1 1 -p 1
+$ ./lsCOMP_uint32 -i xpcs_500_2162_2068.uint32 -d 500 2162 2068 -b 1 1 1 1 -p 1
 GPU warmup finished!
 
 Dataset information:
