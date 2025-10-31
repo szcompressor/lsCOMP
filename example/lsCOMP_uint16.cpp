@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <cuda_runtime.h>
 #include <lsCOMP_entry.h>
 #include <lsCOMP_timer.h>
@@ -20,8 +21,8 @@ int main(int argc, char* argv[])
 
     // Check if enough arguments are provided
     if (argc < 13) {
-        fprintf(stderr, "Usage:\n");
-        fprintf(stderr, "   %s -i oriFilePath -d dims.x dims.y dims.z -b quantBins.x quantBins.y quantBins.z quantBins.w -p value -o decFilePath\n", argv[0]);
+        fprintf(stderr, "lsCOMP Usage:\n");
+        fprintf(stderr, "   %s -i oriFilePath -d dims.x dims.y dims.z -b quantBins.x quantBins.y quantBins.z quantBins.w -p value -x cmpFilePath -o decFilePath\n", argv[0]);
         fprintf(stderr, "Options:\n");
         fprintf(stderr, "   -i oriFilePath: Path to the original data file\n");
         fprintf(stderr, "   -d dims.x dims.y dims.z: Dimensions of the original data, where dim.z is the fastest dimension.\n");
@@ -123,8 +124,9 @@ int main(int argc, char* argv[])
     // printf("quantBins: %u %u %u %u\n", quantBins.x, quantBins.y, quantBins.z, quantBins.w);
     // printf("poolingTH: %.2f\n", poolingTH);
 
-    // For measuring the end-to-end throughput.
+    // For measuring time and end-to-end throughput.
     TimingGPU timer_GPU;
+    struct timespec start_timer, end_timer;
 
     // Input data preparation on GPU.
     uint16_t* oriData = NULL;
@@ -132,7 +134,10 @@ int main(int argc, char* argv[])
     unsigned char* cmpBytes = NULL;
     size_t nbEle = 0;
     size_t cmpSize = 0;
+    clock_gettime(CLOCK_MONOTONIC, &start_timer);
     oriData = readUInt16Data_Yafan(oriFilePath, &nbEle, &status);
+    clock_gettime(CLOCK_MONOTONIC, &end_timer);
+    float readTime = (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
     if(nbEle != (size_t)dims.x * (size_t)dims.y * (size_t)dims.z) {
         fprintf(stderr, "Error: The number of elements in the original data does not match the dimensions\n");
         return 1;
@@ -144,10 +149,12 @@ int main(int argc, char* argv[])
     uint16_t* d_oriData;
     uint16_t* d_decData;
     unsigned char* d_cmpBytes;
+    timer_GPU.StartCounter();
     cudaMalloc((void**)&d_oriData, nbEle*sizeof(uint16_t));
     cudaMemcpy(d_oriData, oriData, nbEle*sizeof(uint16_t), cudaMemcpyHostToDevice);
     cudaMalloc((void**)&d_decData, nbEle*sizeof(uint16_t));
     cudaMalloc((void**)&d_cmpBytes, nbEle*sizeof(uint16_t));
+    float h2dTime = timer_GPU.GetCounter();
 
     // Initialize CUDA stream.
     cudaStream_t stream;
@@ -164,40 +171,64 @@ int main(int argc, char* argv[])
 
     // Transfer compressed data to CPU then back to GPU, making sure compression ratio is correct.
     // No need to add this part for real-world usages, this is only for testing compresion ratio correcness.
+    clock_gettime(CLOCK_MONOTONIC, &start_timer);
     unsigned char* cmpBytes_dup = (unsigned char*)malloc(cmpSize*sizeof(unsigned char));
     cudaMemcpy(cmpBytes_dup, d_cmpBytes, cmpSize*sizeof(unsigned char), cudaMemcpyDeviceToHost);
     cudaMemset(d_cmpBytes, 0, nbEle*sizeof(uint16_t)); // set to zero for double check.
     cudaMemcpy(d_cmpBytes, cmpBytes_dup, cmpSize*sizeof(unsigned char), cudaMemcpyHostToDevice); // copy back to GPU.
+    clock_gettime(CLOCK_MONOTONIC, &end_timer);
+    float verifyTime = (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
 
     // lsCOMP decompression.
     timer_GPU.StartCounter();
     lsCOMP_decompression_uint16_bsize64(d_decData, d_cmpBytes, cmpSize, dims, quantBins, poolingTH, stream);
     float decTime = timer_GPU.GetCounter();
 
+    // Write data if needed.
+    float d2hTime = 0.0f;
+    float writeTime = 0.0f;
+
+    if(strlen(cmpFilePath) > 0) {
+        timer_GPU.StartCounter();
+        cudaMemcpy(cmpBytes, d_cmpBytes, cmpSize*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+        d2hTime += timer_GPU.GetCounter();
+        clock_gettime(CLOCK_MONOTONIC, &start_timer);
+        writeByteData_Yafan(cmpBytes, cmpSize, cmpFilePath, &status);
+        clock_gettime(CLOCK_MONOTONIC, &end_timer);
+        writeTime += (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
+    }
+
+    if(strlen(decFilePath) > 0) {
+        timer_GPU.StartCounter();
+        cudaMemcpy(decData, d_decData, nbEle*sizeof(uint16_t), cudaMemcpyDeviceToHost);
+        d2hTime += timer_GPU.GetCounter();
+        clock_gettime(CLOCK_MONOTONIC, &start_timer);
+        writeUShortData_inBytes_Yafan(decData, nbEle, decFilePath, &status);
+        clock_gettime(CLOCK_MONOTONIC, &end_timer);
+        writeTime += (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
+    }
+
     // Print results.
     printf("Dataset information:\n");
     printf("  - dims:       %u x %u x %u\n", dims.x, dims.y, dims.z);
-    printf("  - length:     %zu\n", nbEle);
-    printf("  - oriSize:    %f GB\n", nbEle*sizeof(uint16_t)/1024.0/1024.0/1024.0);
-    printf("  - cmpSize:    %f GB\n\n", cmpSize*sizeof(unsigned char)/1024.0/1024.0/1024.0);
+    printf("  - length:     %zu\n\n", nbEle);
     printf("Input arguments:\n");
     printf("  - quantBins:  %u %u %u %u\n", quantBins.x, quantBins.y, quantBins.z, quantBins.w);
     printf("  - poolingTH:  %f\n\n", poolingTH);
+    printf("Breakdown of time costs:\n");
+    printf("  - Read data from disk time:   %f s\n", readTime);
+    printf("  - CPU data transfer to GPU:   %f s\n", h2dTime/1024.0);
+    printf("  - GPU compression time:       %f s\n", cmpTime/1024.0);
+    printf("  - GPU-CPU data tranfer time:  %f s \t(optional step, flushing cmpData to 0 for verification)\n", verifyTime);
+    printf("  - GPU decompression time:     %f s\n", decTime/1024.0);
+    printf("  - GPU data transfer to CPU:   %f s \t(optional step, only used when -x/-o flag is used)\n", d2hTime/1024.0);
+    printf("  - Write data to disk time:    %f s \t(optional step, only used when -x/-o flag is used)\n\n", writeTime);
+    printf("lsCOMP performance results:\n");
     printf("lsCOMP compression   end-to-end speed: %f GB/s\n", (nbEle*sizeof(uint16_t)/1024.0/1024.0)/cmpTime);
     printf("lsCOMP decompression end-to-end speed: %f GB/s\n", (nbEle*sizeof(uint16_t)/1024.0/1024.0)/decTime);
     printf("lsCOMP compression ratio: %f\n", (nbEle*sizeof(uint16_t)/1024.0/1024.0)/(cmpSize*sizeof(unsigned char)/1024.0/1024.0));
-
-    // Write compressed data if needed.
-    if(strlen(cmpFilePath) > 0) {
-        cudaMemcpy(cmpBytes, d_cmpBytes, cmpSize*sizeof(unsigned char), cudaMemcpyDeviceToHost);
-        writeByteData_Yafan(cmpBytes, cmpSize, cmpFilePath, &status);
-    }
-
-    // Write reconstructed data if needed.
-    if(strlen(decFilePath) > 0) {
-        cudaMemcpy(decData, d_decData, nbEle*sizeof(uint16_t), cudaMemcpyDeviceToHost);
-        writeUShortData_inBytes_Yafan(decData, nbEle, decFilePath, &status);
-    }
+    printf("  - oriSize: %zu bytes\n", nbEle*sizeof(uint16_t));
+    printf("  - cmpSize: %zu bytes\n", cmpSize*sizeof(unsigned char));
 
     free(oriData);
     free(decData);
