@@ -2,37 +2,80 @@
 
 <a href="./LICENSE"><img src="https://img.shields.io/badge/License-BSD%203--Clause-blue.svg"></a>
 
-lsCOMP (<u>l</u>ight <u>s</u>ource <u>COMP</u>ression) is a user-friendly and fast GPU lossy/lossless compressor for light source data and unsigned integers (both ```uint32``` and ```uint16```).
-Both compression and decompression in lsCOMP is fully executed in a single NVIDIA GPU kernel without CPU intervention, guaranteeing high end-to-end performance.
-Supporting both configurable lossy and lossless compression modes, lsCOMP can be used in diverse scenarios that require different level of data fidelity.
-lsCOMP is not only suitable for light source data but also for generic integer compression that requres high speed (e.g., visualization datasets from [Open Scivis Datasets](https://github.com/sci-visus/open-scivis-datasets)).
+This branch contains instructions to setup Podman or Docker container for running lsCOMP compressor.
+The original image is created using Docker environments and is compatible with Podman as well.
+The prepared image is uploaded in Dockerhub with [link](https://hub.docker.com/repository/docker/hyfshishen/lscomp/general).
+Inside this image, lsCOMP compressor and NVIDIA nvCOMP compressors (along with other related software) are configured.
 
-This work is published in **[SC'25] lsCOMP: Efficient Light Source Compression**.
-- Developer: Yafan Huang, Sheng Di, Robert Underwood
-- Contributors: Peco Myint, Miaoqi Chu, Guanpeng Li, Nicholas Schwarz, and Franck Cappello
-- Contact: ```yafan-huang@uiowa.edu```
+## Prerequisite
+- A Linux machine
+- An NVIDIA GPU
+- Docker or Podman installed
 
-## Environmental Requirements
-- Linux OS with NVIDIA GPUs
-- Git >= 2.15
-- CMake >= 3.21
-- CUDA Toolkit >= 11.0
-- GCC >= 7.3.0
+## Launching Container
 
-## Compile lsCOMP
-You can compile lsCOMP by following commands:
+If you are using Podman 4.0+ and NVIDIA driviers are setup correctly:
+
 ```shell
-$ git clone https://github.com/szcompressor/lsCOMP.git
-$ cd lsCOMP
-$ mkdir build && cd build
-$ cmake ..
-$ make -j
-```
-After compilation, you will see 2 executable binaries, ```lsCOMP_uint32``` and ```lsCOMP_uint16```, in ```lsCOMP/build/```.
-They are used for performing either configurable lossy or lossless compression for ```uint32``` and ```uint16``` data.
+# Pull the image
+podman pull docker.io/hyfshishen/lscomp:cuda12-container
 
-## Execute lsCOMP
-We use ```lsCOMP_uint32``` here to explain; the usage of ```lsCOMP_uint16``` is similar.
+# Launch the container with GPU access (NVIDIA runtime must be configured)
+podman run --rm -it --hooks-dir=/usr/share/containers/oci/hooks.d \
+    --device nvidia.com/gpu=all \
+    hyfshishen/lscomp:cuda12-container bash
+```
+
+If you are using Docker, please make sure Docker and NVIDIA Container Toolkit are installed and working.
+
+```shell
+# Pull the image
+docker pull hyfshishen/lscomp:cuda12-container
+
+# Launch an interactive container with GPU access
+docker run --rm -it --gpus all hyfshishen/lscomp:cuda12-container bash
+```
+
+The executable binaries for lsCOMP and nvCOMP compressors are setup in local path already inside this container.
+So in later steps, we assume we are already in ```~/``` path inside this container.
+
+## Executing lsCOMP and nvCOMP Compressors
+
+### Setting Up Datasets
+
+To make sure light source datasets can be executed with lsCOMP and nvCOMP command line interfaces, we need to extract it from the original HDF5 files and save it as binary format.
+
+Taking ```D0131_US-Cup2_a0010_f005000_r00001.h5``` as an example, this is the time-series XPCS light source dataset with dimension (5000, 2162, 2068).
+We can use following command to extract it.
+```python
+import h5py
+import numpy as np
+
+data_path = "D0131_US-Cup2_a0010_f005000_r00001.h5"
+hf = h5py.File(data_path, 'r')
+raw = np.array(hf['entry/data/data'][:])
+
+# Settings
+output_prefix = "frame"
+slices_per_file = 500
+dtype = np.uint32
+
+# Write 500-slice chunks to separate binary files
+num_files = raw.shape[0] // slices_per_file  # 10 files
+
+for i in range(num_files):
+    chunk = raw[i * slices_per_file : (i + 1) * slices_per_file]
+    chunk.tofile(f"{output_prefix}_{i:02d}.bin")
+
+print(f"Saved {num_files} binary files with {slices_per_file} slices each.")
+```
+Then you split it into a set of binary files with 500 slices in each. Such binary dataset can be used to be compressed using lsCOMP and nvCOMP command line interfaces.
+
+### Using lsCOMP
+
+There are two executable binaries for lsCOMP, ```lsCOMP_uint16``` for uint16 type and ```lsCOMP_uint32``` for uint32 data type.
+Taking CSSI dataset with uint32 data type as an example, its usage can be shown as below:
+
 ```shell
 $ ./lsCOMP_uint32 --help
 lsCOMP Usage:
@@ -50,12 +93,19 @@ Examples:
    ./lsCOMP_uint32 -i data/cssi.bin -d 600 1813 1558 -b 3 5 10 15 -p 0.5 -o data/cssi-dec.bin
    ./lsCOMP_uint32 -i data/cssi.bin -d 600 1813 1558 -b 3 5 10 15 -p 0.5 -x data/cssi-cmp.bin -o data/cssi-dec.bin
 ```
-Note that lsCOMP supports configurable lossy modes, consisting of two steps: **Adaptive Scalar Quantization** and **Selective Pooling**.
-You may choose to enable either step individually, enable both, or disable both (which makes lsCOMP operate in a lossless mode).
-To disable Adaptive Scalar Quantization, set ```-b 1 1 1 1```; to disable Selective Pooling, set ```-p 1```.
-More details about these algorithms can be found in the paper.
 
-A sample output (lossless mode) can be found in the below:
+Assuming the light source dataset has 3 dimension 600 1813 1558, then it means there are 600 2D images and each image has dimension 1813 x 1558.
+There are two lossy modes, adaptive scalar quantization bin ```-b``` and selective pooling ```-p```, they are lossy modes. If you want to use lossless compression, you can set all of them as 1. For example:
+
+```shell
+lsCOMP_uint32 -i your-data.bin -d 600 1813 1558 -b 1 1 1 1 -p 1
+```
+
+Then it will be compressed using lossless format.
+To save the compressed data, you can use ```-x``` flag; to save the reconstructed data (if you are using lossless, the reconstructed data is identical), you can use ```-o``` flag. Note that ```-x``` and ```-o``` flags are optional in execution.
+
+A sample output after compression can be shown as below:
+
 ```shell
 $ ./lsCOMP_uint32 -i cssi_600_1813_1558.uint32 -d 600 1813 1558 -b 1 1 1 1 -p 1 -x cmp.bin -o dec.bin
 
@@ -114,22 +164,45 @@ lsCOMP compression ratio: 16.171549
   - oriSize: 6779169600 bytes
   - cmpSize: 419203488 bytes
 ```
-Breakdown execution details are printed. This result is measured using an NVIDIA A100 (40 GB) GPU.
+Detailed breakdown performance and flags are printed.
+Above results are tested on an NVIDIA A100 GPU.
 
-## Citation
-If you find lsCOMP is useful, the following paper can be considered for citing.
-```bibtex
-@inproceedings{huang2025lscomp,
-    title={lsCOMP: Efficient Light Source Compression},
-    author={Huang, Yafan and Di, Sheng and Underwood, Robert and Myint, Peco and Chu, Miaoqi and and Li, Guanpeng and Schwarz, Nicholas and Cappello, Franck},
-    booktitle={Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis},
-    pages={1--18},
-    year={2025}
-}
+```lsCOMP_uint16``` can be executed bin the same way.
+
+### Using nvCOMP Compressors
+
+nvCOMP compressors are also configured in local path and can be executed directly. The commands include:
+```shell
+benchmark_allgather         benchmark_deflate_chunked   benchmark_lz4_synth
+benchmark_ans_chunked       benchmark_gdeflate_chunked  benchmark_snappy_chunked
+benchmark_bitcomp_chunked   benchmark_hlif              benchmark_snappy_synth
+benchmark_cascaded_chunked  benchmark_lz4_chunked       benchmark_zstd_chunked
 ```
 
-## Copyright
-(C) 2025 by Argonne National Laboratory and University of Iowa. For more details see [COPYRIGHT](https://github.com/szcompressor/lsCOMP/blob/main/LICENSE).
+Assuming we have a dataset ```data.bin```, it can be compressed using commands:
 
-## Acknowledgement
-This work is supported by the U.S. Department of Energy (DOE) Office of Science, Advanced Scientific Computing Research (ASCR) and Basic Energy Sciences (BES) under the award "ILLUMINE - Intelligent Learning for Light Source and Neutron Source User Measurements Including Navigation and Experiment Steering." This work also received support from the DOE Office of Science ASCR Leadership Computing Challenge (ALCC) through the 2025–2026 award "Enhancing APS-Enabled Research through Integrated Research Infrastructure." This research used resources of the Advanced Photon Source (APS) and the Argonne Leadership Computing Facility (ALCF), both U.S. DOE Office of Science user facilities operated by Argonne National Laboratory under Contract No. DE-AC02-06CH11357. Additional computing resources were provided by the National Energy Research Scientific Computing Center (NERSC) under ALCC award ERCAP0030693 and the Oak Ridge Leadership Computing Facility (OLCF) at Oak Ridge National Laboratory under Contract No. DE-AC05-00OR22725. We also acknowledge computing resources provided by ALCF Polaris and the Argonne Laboratory Computing Resource Center (LCRC) Swing. This work was further supported by the U.S. DOE Office of Science, ASCR, under Contracts DE-SC0024559, as well as National Science Foundation (NSF) grants OAC-2104023, OAC-2211538, OAC-2311875, OAC-2514036, and OAC-2513768.
+```shell
+# compress with cascaded, the fastest one
+benchmark_cascaded_chunked -f data.bin
+
+# compress with lz4, high speed and relatively high ratio
+benchmark_lz4_chunked -f data.bin
+
+# compress with zstd, the highest ratio one
+benchmark_zstd_chunked -f data.bin
+```
+
+A sample output can be shown as below:
+```shell
+benchmark_zstd_chunked -f pawpawsaurus_958x646x1088_uint16.raw 
+----------
+files: 1
+uncompressed (B): 1346656768
+comp_size: 1121236226, compressed ratio: 1.2010
+compression throughput (GB/s): 1.5662
+decompression throughput (GB/s): 27.0891
+```
+Above results are tested on my local PC with a RTX 3080 GPU.
+
+## Contact
+Yafan Huang, yafan-huang@uiowa.edu
