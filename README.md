@@ -10,6 +10,7 @@ lsCOMP is not only suitable for light source data but also for generic integer c
 This work is published in **[SC'25] lsCOMP: Efficient Light Source Compression**.
 - Developer: Yafan Huang, Sheng Di, Robert Underwood
 - Contributors: Peco Myint, Miaoqi Chu, Guanpeng Li, Nicholas Schwarz, and Franck Cappello
+- Contact: ```yafan-huang@uiowa.edu```
 
 ## Environmental Requirements
 - Linux OS with NVIDIA GPUs
