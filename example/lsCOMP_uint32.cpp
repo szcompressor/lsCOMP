@@ -8,6 +8,21 @@
 #include <lsCOMP_timer.h>
 #include <lsCOMP_utility.h>
 
+int SECTION_NUM = 0;
+
+inline void print_section(const char* title) {
+    printf("\nSection %d: %s\n", SECTION_NUM, title);
+    SECTION_NUM++;
+}
+
+inline void print_step(const char* msg) {
+    printf("  → %s...\n", msg);
+}
+
+inline void print_done() {
+    printf("  ✓ Done.\n");
+}
+
 int main(int argc, char* argv[])
 {
     // Read input information.
@@ -128,15 +143,19 @@ int main(int argc, char* argv[])
     TimingGPU timer_GPU;
     struct timespec start_timer, end_timer;
 
+    print_section("lsCOMP Input Preparation");
+
     // Input data preparation on GPU.
     uint32_t* oriData = NULL;
     uint32_t* decData = NULL;
     unsigned char* cmpBytes = NULL;
     size_t nbEle = 0;
     size_t cmpSize = 0;
+    print_step("Read data from disk");
     clock_gettime(CLOCK_MONOTONIC, &start_timer);
     oriData = readUInt32Data_Yafan(oriFilePath, &nbEle, &status);
     clock_gettime(CLOCK_MONOTONIC, &end_timer);
+    print_done();
     float readTime = (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
     if(nbEle != (size_t)dims.x * (size_t)dims.y * (size_t)dims.z) {
         fprintf(stderr, "Error: The number of elements in the original data does not match the dimensions\n");
@@ -149,66 +168,92 @@ int main(int argc, char* argv[])
     uint32_t* d_oriData;
     uint32_t* d_decData;
     unsigned char* d_cmpBytes;
+    print_step("Transfer data to GPU");
     timer_GPU.StartCounter();
     cudaMalloc((void**)&d_oriData, nbEle*sizeof(uint32_t));
     cudaMemcpy(d_oriData, oriData, nbEle*sizeof(uint32_t), cudaMemcpyHostToDevice);
     cudaMalloc((void**)&d_decData, nbEle*sizeof(uint32_t));
     cudaMalloc((void**)&d_cmpBytes, nbEle*sizeof(uint32_t));
     float h2dTime = timer_GPU.GetCounter();
+    print_done();
 
     // Initialize CUDA stream.
     cudaStream_t stream;
     cudaStreamCreate(&stream);
 
     // Warmup for NVIDIA GPU.
+    print_section("GPU Warmup");
+    print_step("Performing GPU warmup runs for 3 iterations");
     for(int i=0; i<3; i++) lsCOMP_compression_uint32_bsize64(d_oriData, d_cmpBytes, &cmpSize, dims, quantBins, poolingTH, stream);
-    printf("GPU warmup finished!\n\n");
+    print_done();
+
+    print_section("lsCOMP Compression and Decompression");
 
     // lsCOMP compression.
+    print_step("lsCOMP GPU compression");
     timer_GPU.StartCounter();
     lsCOMP_compression_uint32_bsize64(d_oriData, d_cmpBytes, &cmpSize, dims, quantBins, poolingTH, stream);
     float cmpTime = timer_GPU.GetCounter();
+    print_done();
 
     // Transfer compressed data to CPU then back to GPU, making sure compression ratio is correct.
     // No need to add this part for real-world usages, this is only for testing compresion ratio correcness.
+    print_step("Verify compressed data correctness via GPU-CPU-GPU transfer (optional step)");
     clock_gettime(CLOCK_MONOTONIC, &start_timer);
     unsigned char* cmpBytes_dup = (unsigned char*)malloc(cmpSize*sizeof(unsigned char));
     cudaMemcpy(cmpBytes_dup, d_cmpBytes, cmpSize*sizeof(unsigned char), cudaMemcpyDeviceToHost);
     cudaMemset(d_cmpBytes, 0, nbEle*sizeof(uint32_t)); // set to zero for double check.
     cudaMemcpy(d_cmpBytes, cmpBytes_dup, cmpSize*sizeof(unsigned char), cudaMemcpyHostToDevice); // copy back to GPU.
     clock_gettime(CLOCK_MONOTONIC, &end_timer);
+    print_done();
     float verifyTime = (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
 
     // lsCOMP decompression.
+    print_step("lsCOMP GPU decompression");
     timer_GPU.StartCounter();
     lsCOMP_decompression_uint32_bsize64(d_decData, d_cmpBytes, cmpSize, dims, quantBins, poolingTH, stream);
     float decTime = timer_GPU.GetCounter();
+    print_done();
 
     // Write data if needed.
     float d2hTime = 0.0f;
     float writeTime = 0.0f;
 
+    if(strlen(cmpFilePath) > 0 || strlen(decFilePath) > 0)
+        print_section("Output Data Writing (optional step)");
+
     if(strlen(cmpFilePath) > 0) {
+        print_step("Write compressed data from GPU to CPU");
         timer_GPU.StartCounter();
         cudaMemcpy(cmpBytes, d_cmpBytes, cmpSize*sizeof(unsigned char), cudaMemcpyDeviceToHost);
         d2hTime += timer_GPU.GetCounter();
+        print_done();
+        print_step("Write compressed data to from CPU to disk");
         clock_gettime(CLOCK_MONOTONIC, &start_timer);
         writeByteData_Yafan(cmpBytes, cmpSize, cmpFilePath, &status);
         clock_gettime(CLOCK_MONOTONIC, &end_timer);
+        print_done();
         writeTime += (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
     }
     
     if(strlen(decFilePath) > 0) {
+        print_step("Write decompressed data from GPU to CPU");
         timer_GPU.StartCounter();
         cudaMemcpy(decData, d_decData, nbEle*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         d2hTime += timer_GPU.GetCounter();
+        print_done();
+        print_step("Write decompressed data from CPU to disk");
         clock_gettime(CLOCK_MONOTONIC, &start_timer);
         writeUIntData_inBytes_Yafan(decData, nbEle, decFilePath, &status);
         clock_gettime(CLOCK_MONOTONIC, &end_timer);
+        print_done();
         writeTime += (end_timer.tv_sec - start_timer.tv_sec) + (end_timer.tv_nsec - start_timer.tv_nsec) / 1e9;
     }
 
     // Print results.
+    printf("\n====================================\n");
+    printf("========== lsCOMP Summary ==========\n");
+    printf("====================================\n");
     printf("Dataset information:\n");
     printf("  - dims:       %u x %u x %u\n", dims.x, dims.y, dims.z);
     printf("  - length:     %zu\n\n", nbEle);

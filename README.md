@@ -56,34 +56,64 @@ More details about these algorithms can be found in the paper.
 
 A sample output (lossless mode) can be found in the below:
 ```shell
-$ ./lsCOMP_uint32 -i xpcs_500_2162_2068.uint32 -d 500 2162 2068 -b 1 1 1 1 -p 1
-GPU warmup finished!
+$ ./lsCOMP_uint32 -i cssi_600_1813_1558.uint32 -d 600 1813 1558 -b 1 1 1 1 -p 1 -x cmp.bin -o dec.bin
 
+Section 0: lsCOMP Input Preparation
+  → Read data from disk...
+  ✓ Done.
+  → Transfer data to GPU...
+  ✓ Done.
+
+Section 1: GPU Warmup
+  → Performing GPU warmup runs for 3 iterations...
+  ✓ Done.
+
+Section 2: lsCOMP Compression and Decompression
+  → lsCOMP GPU compression...
+  ✓ Done.
+  → Verify compressed data correctness via GPU-CPU-GPU transfer (optional step)...
+  ✓ Done.
+  → lsCOMP GPU decompression...
+  ✓ Done.
+
+Section 3: Output Data Writing (optional step)
+  → Write compressed data from GPU to CPU...
+  ✓ Done.
+  → Write compressed data to from CPU to disk...
+  ✓ Done.
+  → Write decompressed data from GPU to CPU...
+  ✓ Done.
+  → Write decompressed data from CPU to disk...
+  ✓ Done.
+
+====================================
+========== lsCOMP Summary ==========
+====================================
 Dataset information:
-  - dims:       500 x 2162 x 2068
-  - length:     2235508000
+  - dims:       600 x 1813 x 1558
+  - length:     1694792400
 
 Input arguments:
   - quantBins:  1 1 1 1
   - poolingTH:  1.000000
 
 Breakdown of time costs:
-  - Read data from disk time:   3.413821 s
-  - CPU data transfer to GPU:   0.706461 s
-  - GPU compression time:       0.015537 s
-  - GPU-CPU data tranfer time:  0.486617 s      (optional step, flushing cmpData to 0 for verification)
-  - GPU decompression time:     0.022800 s
-  - GPU data transfer to CPU:   0.000000 s      (optional step, only used when -x/-o flag is used)
-  - Write data to disk time:    0.000000 s      (optional step, only used when -x/-o flag is used)
+  - Read data from disk time:   2.681619 s
+  - CPU data transfer to GPU:   0.530205 s
+  - GPU compression time:       0.012865 s
+  - GPU-CPU data tranfer time:  0.186769 s      (optional step, flushing cmpData to 0 for verification)
+  - GPU decompression time:     0.019442 s
+  - GPU data transfer to CPU:   2.447481 s      (optional step, only used when -x/-o flag is used)
+  - Write data to disk time:    5.952488 s      (optional step, only used when -x/-o flag is used)
 
 lsCOMP performance results:
-lsCOMP compression   end-to-end speed: 536.004354 GB/s
-lsCOMP decompression end-to-end speed: 365.261478 GB/s
-lsCOMP compression ratio: 8.228122
-  - oriSize: 8942032000 bytes
-  - cmpSize: 1086764580 bytes
+lsCOMP compression   end-to-end speed: 490.759780 GB/s
+lsCOMP decompression end-to-end speed: 324.740466 GB/s
+lsCOMP compression ratio: 16.171549
+  - oriSize: 6779169600 bytes
+  - cmpSize: 419203488 bytes
 ```
-This result is measured under an NVIDIA A100 (40 GB) GPU.
+Breakdown execution details are printed. This result is measured using an NVIDIA A100 (40 GB) GPU.
 
 ## Citation
 If you find lsCOMP is useful, the following paper can be considered for citing.
