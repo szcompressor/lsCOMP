@@ -3,14 +3,14 @@
 
 __global__ void lsCOMP_compression_kernel_uint32_bsize64(const uint32_t* const __restrict__ oriData, 
                                                         unsigned char* const __restrict__ cmpBytes, 
-                                                        volatile unsigned int* const __restrict__ cmpOffset, 
-                                                        volatile unsigned int* const __restrict__ locOffset,
+                                                        volatile size_t* const __restrict__ cmpOffset, 
+                                                        volatile size_t* const __restrict__ locOffset,
                                                         volatile int* const __restrict__ flag,
                                                         uint blockNum, const uint3 dims, 
                                                         const uint4 quantBins, const float poolingTH)
 {
-    __shared__ unsigned int excl_sum;
-    __shared__ unsigned int base_idx;
+    __shared__ size_t excl_sum;
+    __shared__ size_t base_idx;
 
     const uint tid = threadIdx.x;
     const uint bid = blockIdx.x;
@@ -35,7 +35,7 @@ __global__ void lsCOMP_compression_kernel_uint32_bsize64(const uint32_t* const _
     uint data_idx_x, data_idx_y, data_idx_z;
     unsigned char fixed_rate[block_per_thread];
     uint quant_bins[4] = {quantBins.x, quantBins.y, quantBins.z, quantBins.w};
-    unsigned int thread_ofs = 0;    // Derived from cuSZp, so use unsigned int instead of uint.
+    size_t thread_ofs = 0;    // Derived from cuSZp, so use unsigned int instead of uint.
     
     // Scalar-quantization, Dynamic Binning Selection, Fixed-length Encoding.
     base_start_block_idx = warp * 32 * block_per_thread;
@@ -172,7 +172,7 @@ __global__ void lsCOMP_compression_kernel_uint32_bsize64(const uint32_t* const _
         {
             // Decoupled look-back
             int lookback = warp;
-            int loc_excl_sum = 0;
+            size_t loc_excl_sum = 0;
             while(lookback>0)
             {
                 int status;
@@ -218,10 +218,10 @@ __global__ void lsCOMP_compression_kernel_uint32_bsize64(const uint32_t* const _
     __syncthreads();
 
     // Bit shuffle for each index, also storing data to global memory.
-    unsigned int base_cmp_byte_ofs = base_idx;
-    unsigned int cmp_byte_ofs;
-    unsigned int tmp_byte_ofs = 0;
-    unsigned int cur_byte_ofs = 0;
+    size_t base_cmp_byte_ofs = base_idx;
+    size_t cmp_byte_ofs;
+    size_t tmp_byte_ofs = 0;
+    size_t cur_byte_ofs = 0;
     for(uint j=0; j<block_per_thread; j++)
     {
         // Block initialization.
@@ -269,7 +269,7 @@ __global__ void lsCOMP_compression_kernel_uint32_bsize64(const uint32_t* const _
                 int tmp = __shfl_up_sync(0xffffffff, tmp_byte_ofs, i);
                 if(lane >= i) tmp_byte_ofs += tmp;
             }
-            unsigned int prev_thread = __shfl_up_sync(0xffffffff, tmp_byte_ofs, 1);
+            size_t prev_thread = __shfl_up_sync(0xffffffff, tmp_byte_ofs, 1);
             if(!lane) cmp_byte_ofs = base_cmp_byte_ofs + cur_byte_ofs;
             else cmp_byte_ofs = base_cmp_byte_ofs + cur_byte_ofs + prev_thread;
 
@@ -462,14 +462,14 @@ __global__ void lsCOMP_compression_kernel_uint32_bsize64(const uint32_t* const _
 
 __global__ void lsCOMP_decompression_kernel_uint32_bsize64(uint32_t* const __restrict__ decData, 
                                                         const unsigned char* const __restrict__ cmpBytes, 
-                                                        volatile unsigned int* const __restrict__ cmpOffset, 
-                                                        volatile unsigned int* const __restrict__ locOffset,
+                                                        volatile size_t* const __restrict__ cmpOffset, 
+                                                        volatile size_t* const __restrict__ locOffset,
                                                         volatile int* const __restrict__ flag,
                                                         uint blockNum, const uint3 dims, 
                                                         const uint4 quantBins, const float poolingTH)
 {
-    __shared__ unsigned int excl_sum;
-    __shared__ unsigned int base_idx;
+    __shared__ size_t excl_sum;
+    __shared__ size_t base_idx;
 
     const uint tid = threadIdx.x;
     const uint bid = blockIdx.x;
@@ -494,7 +494,7 @@ __global__ void lsCOMP_decompression_kernel_uint32_bsize64(uint32_t* const __res
     uint data_idx_x, data_idx_y, data_idx_z;
     unsigned char fixed_rate[block_per_thread];
     uint quant_bins[4] = {quantBins.x, quantBins.y, quantBins.z, quantBins.w};
-    unsigned int thread_ofs = 0;    // Derived from cuSZp, so use unsigned int instead of uint.
+    size_t thread_ofs = 0;    // Derived from cuSZp, so use unsigned int instead of uint.
 
     // Obtain fixed-rate information for each block.
     base_start_block_idx = warp * 32 * block_per_thread;
@@ -554,7 +554,7 @@ __global__ void lsCOMP_decompression_kernel_uint32_bsize64(uint32_t* const __res
         {
             // Decoupled look-back
             int lookback = warp;
-            int loc_excl_sum = 0;
+            size_t loc_excl_sum = 0;
             while(lookback>0)
             {
                 int status;
@@ -600,10 +600,10 @@ __global__ void lsCOMP_decompression_kernel_uint32_bsize64(uint32_t* const __res
     __syncthreads();
 
     // Bit shuffle for each index, also reading data from global memory.
-    unsigned int base_cmp_byte_ofs = base_idx;
-    unsigned int cmp_byte_ofs;
-    unsigned int tmp_byte_ofs = 0;
-    unsigned int cur_byte_ofs = 0;
+    size_t base_cmp_byte_ofs = base_idx;
+    size_t cmp_byte_ofs;
+    size_t tmp_byte_ofs = 0;
+    size_t cur_byte_ofs = 0;
     for(uint j=0; j<block_per_thread; j++)
     {
         // Block initialization.
@@ -630,7 +630,7 @@ __global__ void lsCOMP_decompression_kernel_uint32_bsize64(uint32_t* const __res
                 int tmp = __shfl_up_sync(0xffffffff, tmp_byte_ofs, i);
                 if(lane >= i) tmp_byte_ofs += tmp;
             }
-            unsigned int prev_thread = __shfl_up_sync(0xffffffff, tmp_byte_ofs, 1);
+            size_t prev_thread = __shfl_up_sync(0xffffffff, tmp_byte_ofs, 1);
             if(!lane) cmp_byte_ofs = base_cmp_byte_ofs + cur_byte_ofs;
             else cmp_byte_ofs = base_cmp_byte_ofs + cur_byte_ofs + prev_thread;
 

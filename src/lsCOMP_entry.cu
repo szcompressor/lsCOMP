@@ -27,27 +27,27 @@ void lsCOMP_compression_uint32_bsize64(uint32_t* d_oriData, unsigned char* d_cmp
     int cmpOffSize = gsize + 1;
 
     // Initializing global memory for GPU compression.
-    unsigned int* d_cmpOffset;
-    unsigned int* d_locOffset;
+    size_t* d_cmpOffset;
+    size_t* d_locOffset;
     int* d_flag;
-    unsigned int glob_sync;
-    cudaMalloc((void**)&d_cmpOffset, sizeof(unsigned int)*cmpOffSize);
-    cudaMemset(d_cmpOffset, 0, sizeof(unsigned int)*cmpOffSize);
-    cudaMalloc((void**)&d_locOffset, sizeof(unsigned int)*cmpOffSize);
-    cudaMemset(d_locOffset, 0, sizeof(unsigned int)*cmpOffSize);
+    size_t glob_sync;
+    cudaMalloc((void**)&d_cmpOffset, sizeof(size_t)*cmpOffSize);
+    cudaMemset(d_cmpOffset, 0, sizeof(size_t)*cmpOffSize);
+    cudaMalloc((void**)&d_locOffset, sizeof(size_t)*cmpOffSize);
+    cudaMemset(d_locOffset, 0, sizeof(size_t)*cmpOffSize);
     cudaMalloc((void**)&d_flag, sizeof(int)*cmpOffSize);
     cudaMemset(d_flag, 0, sizeof(int)*cmpOffSize);
 
     // Compression.
     dim3 blockSize(bsize);
     dim3 gridSize(gsize);
-    lsCOMP_compression_kernel_uint32_bsize64<<<gridSize, blockSize, sizeof(unsigned int)*2, stream>>>(d_oriData, d_cmpBytes, d_cmpOffset, d_locOffset, d_flag, blockNum, dims, quantBins, poolingTH);
+    lsCOMP_compression_kernel_uint32_bsize64<<<gridSize, blockSize, sizeof(size_t)*2, stream>>>(d_oriData, d_cmpBytes, d_cmpOffset, d_locOffset, d_flag, blockNum, dims, quantBins, poolingTH);
     // Check for kernel launch errors
     checkCudaErrors(cudaGetLastError());
 
     // Obtain compression ratio and move data back to CPU.  
-    cudaMemcpy(&glob_sync, d_cmpOffset+cmpOffSize-1, sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    *cmpSize = (size_t)glob_sync + blockNum;
+    cudaMemcpy(&glob_sync, d_cmpOffset+cmpOffSize-1, sizeof(size_t), cudaMemcpyDeviceToHost);
+    *cmpSize = glob_sync + blockNum;
 
     // Free memory that is used.
     cudaFree(d_cmpOffset);
@@ -67,20 +67,20 @@ void lsCOMP_decompression_uint32_bsize64(uint32_t* d_decData, unsigned char* d_c
     int cmpOffSize = gsize + 1;
 
     // Initializing global memory for GPU compression.
-    unsigned int* d_cmpOffset;
-    unsigned int* d_locOffset;
+    size_t* d_cmpOffset;
+    size_t* d_locOffset;
     int* d_flag;
-    cudaMalloc((void**)&d_cmpOffset, sizeof(unsigned int)*cmpOffSize);
-    cudaMemset(d_cmpOffset, 0, sizeof(unsigned int)*cmpOffSize);
-    cudaMalloc((void**)&d_locOffset, sizeof(unsigned int)*cmpOffSize);
-    cudaMemset(d_locOffset, 0, sizeof(unsigned int)*cmpOffSize);
+    cudaMalloc((void**)&d_cmpOffset, sizeof(size_t)*cmpOffSize);
+    cudaMemset(d_cmpOffset, 0, sizeof(size_t)*cmpOffSize);
+    cudaMalloc((void**)&d_locOffset, sizeof(size_t)*cmpOffSize);
+    cudaMemset(d_locOffset, 0, sizeof(size_t)*cmpOffSize);
     cudaMalloc((void**)&d_flag, sizeof(int)*cmpOffSize);
     cudaMemset(d_flag, 0, sizeof(int)*cmpOffSize);
 
     // Decompression.
     dim3 blockSize(bsize);
     dim3 gridSize(gsize);
-    lsCOMP_decompression_kernel_uint32_bsize64<<<gridSize, blockSize, sizeof(unsigned int)*2, stream>>>(d_decData, d_cmpBytes, d_cmpOffset, d_locOffset, d_flag, blockNum, dims, quantBins, poolingTH);
+    lsCOMP_decompression_kernel_uint32_bsize64<<<gridSize, blockSize, sizeof(size_t)*2, stream>>>(d_decData, d_cmpBytes, d_cmpOffset, d_locOffset, d_flag, blockNum, dims, quantBins, poolingTH);
     // Check for kernel launch errors
     checkCudaErrors(cudaGetLastError());
 
