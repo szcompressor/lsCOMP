@@ -34,40 +34,48 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-result")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler -Wno-unused-result")
 
 
-add_library(${PROJECT_NAME} STATIC)
-
-target_sources(${PROJECT_NAME}
-        PRIVATE
+# Collect sources in a variable so we can reuse them
+set(LSCOMP_SOURCES
         src/lsCOMP_kernel.cu
         src/lsCOMP_utility.cu
         src/lsCOMP_timer.cu
         src/lsCOMP_entry.cu
-        )
+)
+
+# Build static library: liblsCOMP.a
+add_library(${PROJECT_NAME}_static STATIC ${LSCOMP_SOURCES})
+
+# Build shared library: liblsCOMP.so
+add_library(${PROJECT_NAME} SHARED ${LSCOMP_SOURCES})
+
+# If you want the static lib to be usable inside shared libs, enable PIC
+set_target_properties(${PROJECT_NAME}_static PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+)
+
+# Common include dirs for both targets
+target_include_directories(${PROJECT_NAME}_static
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
 target_include_directories(${PROJECT_NAME}
         PRIVATE
-        # where the library itself will look for its internal headers
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         PUBLIC
-        # where top-level project will look for the library's public headers
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        # where external projects will look for the library's public headers
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-        )
-
-#target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-
-# target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+)
 
 set(public_headers
         include/lsCOMP_kernel.h
         include/lsCOMP_utility.h
         include/lsCOMP_timer.h
         include/lsCOMP_entry.h
-        )
-
-# set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-# include(Installing)
+)
 
 option(lsCOMP_BUILD_EXAMPLES "Option to enable building example programs" ON)
 if (lsCOMP_BUILD_EXAMPLES)
