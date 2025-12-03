@@ -116,6 +116,42 @@ lsCOMP compression ratio: 16.171549
 ```
 Breakdown execution details are printed. This result is measured using an NVIDIA A100 (40 GB) GPU.
 
+## Python Bindings for lsCOMP
+lsCOMP also supports Python bindings for fast compression with GPU.
+Examples for **uint32** and **uint16** can be found in ``python`` folder.
+The required Python packages are ``ctypes``, ``pycuda``, and ``numpy``.
+
+The command usages for Python bindings are consistent with C/C++ APIs. 
+Taking **uint32** compression as an example, its usages can be found as below:
+```shell
+$ python example_uint32.py 
+usage: example_uint32.py [-h] -i ORI_PATH -d DX DY DZ -b BX BY BZ BW -p POOLING [-x CMP_PATH] [-o DEC_PATH]
+```
+
+A sample compression can be found as below.
+```shell
+$ python example_uint32.py -i cssi-128.bin -d 128 1813 1558 -b 1 1 1 1 -p 1
+=== lsCOMP uint32 example ===
+Input file      : cssi-128.bin
+Dims            : (128, 1813, 1558) (z fastest)
+Quantization    : (1, 1, 1, 1)
+Pooling SH      : 1.0
+
+Original size   : 1379.226 MiB
+Compressed size : 59.126 MiB
+Compression ratio (orig/cmp): 23.327x
+
+Compression time: 6.133 ms
+Compression TP  : 235.815 GB/s
+Decompress time : 4.242 ms
+Decompress TP   : 340.932 GB/s
+
+Max abs diff    : 0
+```
+
+The Python bindings are based on the complied shared/dynamic library ``liblsCOMP.so``, of which default compiled path is ``build/`` folder. 
+If you compiled this library in another path, please make sure modifying the path in ``python/lsCOMP.py`` accordingly.
+
 ## Citation
 If you find lsCOMP is useful, the following paper can be considered for citing.
 ```bibtex
