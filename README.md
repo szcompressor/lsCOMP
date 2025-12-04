@@ -169,6 +169,54 @@ Above results are tested on an NVIDIA A100 GPU.
 
 ```lsCOMP_uint16``` can be executed bin the same way.
 
+
+### Using lsCOMP Python Bindings
+
+Assuming you are now in the running Docker/Podman container, the first thing is to set up the prepared miniforge and conda enviroments for lsCOMP.
+To do this, you can execute following commands inside the Docker/Podman container:
+
+```shell
+# 1. Back to home directory.
+$ cd ~
+
+# 2. To set up miniforge3, execute:
+$ source ./tools/miniforge3/etc/profile.d/conda.sh
+
+# 3. To launch lsCOMP related Conda environments
+$ conda activate lsCOMP
+```
+
+Then you are ready to go! Examples for **uint32** and **uint16** can be found in ``~/tools/lsCOMP/python`` folder.
+The required Python packages are ``pycuda``, and ``numpy``.
+
+The command usages for Python bindings are consistent with C/C++ APIs. 
+Taking **uint32** compression as an example, its usages can be found as below:
+```shell
+$ python example_uint32.py 
+usage: example_uint32.py [-h] -i ORI_PATH -d DX DY DZ -b BX BY BZ BW -p POOLING [-x CMP_PATH] [-o DEC_PATH]
+```
+
+A sample compression can be found as below.
+```shell
+$ python example_uint32.py -i cssi-128.bin -d 128 1813 1558 -b 1 1 1 1 -p 1
+=== lsCOMP uint32 example ===
+Input file      : cssi-128.bin
+Dims            : (128, 1813, 1558) (z fastest)
+Quantization    : (1, 1, 1, 1)
+Pooling SH      : 1.0
+
+Original size   : 1379.226 MiB
+Compressed size : 59.126 MiB
+Compression ratio (orig/cmp): 23.327x
+
+Compression time: 6.133 ms
+Compression TP  : 235.815 GB/s
+Decompress time : 4.242 ms
+Decompress TP   : 340.932 GB/s
+
+Max abs diff    : 0
+```
+
 ### Using nvCOMP Compressors
 
 nvCOMP compressors are also configured in local path and can be executed directly. The commands include:
@@ -205,4 +253,4 @@ decompression throughput (GB/s): 27.0891
 Above results are tested on my local PC with a RTX 3080 GPU.
 
 ## Contact
-Yafan Huang, yafan-huang@uiowa.edu
+Yafan Huang, ```yafan-huang@uiowa.edu```
